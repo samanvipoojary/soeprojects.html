@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #f0f4f0; --dark: #1a3d2b; --mid: #2d6a4f; --light: #52b788; --warn: #f4a261; --danger: #e63946; --radius: 12px; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--dark); margin: 0; padding: 1.5rem; }
+  .container { max-width: 800px; margin: 0 auto; }
+  header, .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+  .form-card { background: var(--dark); padding: 1.5rem; border-radius: 20px; color: #fff; margin-bottom: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .full { grid-column: 1 / -1; }
+  input, textarea { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; color: #fff; width: 100%; outline: none; }
+  button { cursor: pointer; border: none; transition: 0.2s; }
+  .btn-add { background: var(--light); color: var(--dark); font-weight: 700; padding: 12px; border-radius: 8px; grid-column: 1 / -1; }
+  .tab { padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-size: 0.8rem; cursor: pointer; }
+  .tab.active { background: var(--dark); color: #fff; }
+  .medicine-card { background: #fff; margin-bottom: 10px; padding: 15px; border-radius: var(--radius); display: flex; gap: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+  .status-bar { width: 5px; border-radius: 10px; }
+  .safe { background: var(--mid); } .warn { background: var(--warn); } .danger { background: var(--danger); }
+  .card-body { flex: 1; }
+  .badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; font-weight: 700; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--dark); color: #fff; padding: 10px 20px; border-radius: 8px; display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="font-family:Syne"><h1>MediTrack</h1></div>
+    <div id="stats" style="font-size: 0.8rem; display: flex; gap: 10px;"></div>
+  </header>
+
+  <div class="form-card">
+    <input type="text" id="m-name" class="full" placeholder="Medicine Name">
+    <input type="date" id="m-mfg" title="Mfg Date">
+    <input type="date" id="m-exp" title="Expiry Date">
+    <textarea id="m-use" class="full" placeholder="Purpose..."></textarea>
+    <button class="btn-add" onclick="addMed()">+ Add Medicine</button>
+  </div>
+
+  <div class="controls">
+    <div id="tabs" class="filter-tabs" style="display:flex; gap:5px">
+      <div class="tab active" onclick="setFilter('all', this)">All</div>
+      <div class="tab" onclick="setFilter('safe', this)">Safe</div>
+      <div class="tab" onclick="setFilter('warn', this)">Soon</div>
+      <div class="tab" onclick="setFilter('expired', this)">Expired</div>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+  let meds = JSON.parse(localStorage.getItem('mt') || '[]'), filter = 'all';
+
+  const getSt = (exp) => {
+    const diff = Math.ceil((new Date(exp) - new Date().setHours(0,0,0,0)) / 864e5);
+    return diff < 0 ? 'expired' : diff <= 90 ? 'warn' : 'safe';
+  };
+
+  const showT = (m) => { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => t.style.display='none', 2000); };
+
+  const addMed = () => {
+    const n = document.getElementById('m-name').value, e = document.getElementById('m-exp').value;
+    if (!n || !e) return showT('Fill Name and Expiry');
+    meds.push({ id: Date.now(), n, m: document.getElementById('m-mfg').value, e, u: document.getElementById('m-use').value });
+    save(); render();
+  };
+
+  const save = () => { localStorage.setItem('mt', JSON.stringify(meds)); ['m-name','m-mfg','m-exp','m-use'].forEach(i => document.getElementById(i).value = ''); };
+
+  const setFilter = (f, el) => { filter = f; document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); render(); };
+
+  function render() {
+    const counts = { safe: 0, warn: 0, expired: 0 };
+    meds.forEach(m => counts[getSt(m.e)]++);
+    document.getElementById('stats').innerHTML = `<span>🟢 ${counts.safe}</span> <span>🟠 ${counts.warn}</span> <span>🔴 ${counts.expired}</span>`;
+
+    const filtered = meds.filter(m => filter === 'all' || getSt(m.e) === filter).sort((a,b) => new Date(a.e) - new Date(b.e));
+    document.getElementById('list').innerHTML = filtered.map(m => {
+      const s = getSt(m.e);
+      return `<div class="medicine-card">
+        <div class="status-bar ${s === 'expired' ? 'danger' : s}"></div>
+        <div class="card-body">
+          <b>${m.n}</b><br><small>${m.u}</small><br>
+          <small>Exp: ${new Date(m.e).toLocaleDateString()}</small>
+        </div>
+        <button onclick="meds=meds.filter(x=>x.id!=${m.id});save();render()" style="background:none">🗑</button>
+      </div>`;
+    }).join('') || '<p>No medicines found.</p>';
+  }
+
+  render();
+</script>
+</body>
+</html>
